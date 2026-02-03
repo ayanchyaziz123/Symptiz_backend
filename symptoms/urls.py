@@ -25,15 +25,25 @@ urlpatterns = [
     
     
     # ===== SYMPTOM CHECKS (AI-POWERED) =====
-    
+
+    # Conversational symptom analysis - Start conversation
+    path('checks/start_conversation/',
+         SymptomCheckViewSet.as_view({'post': 'start_conversation'}),
+         name='symptom-check-start-conversation'),
+
+    # Conversational symptom analysis - Continue conversation
+    path('checks/continue_conversation/',
+         SymptomCheckViewSet.as_view({'post': 'continue_conversation'}),
+         name='symptom-check-continue-conversation'),
+
     # Quick analysis without saving (main endpoint for frontend)
-    path('checks/analyze/', 
-         SymptomCheckViewSet.as_view({'post': 'analyze'}), 
+    path('checks/analyze/',
+         SymptomCheckViewSet.as_view({'post': 'analyze'}),
          name='symptom-check-analyze'),
-    
+
     # User's symptom history
-    path('checks/my-history/', 
-         SymptomCheckViewSet.as_view({'get': 'my_history'}), 
+    path('checks/my-history/',
+         SymptomCheckViewSet.as_view({'get': 'my_history'}),
          name='symptom-check-my-history'),
     
     # Statistics (admin only)

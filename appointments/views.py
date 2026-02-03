@@ -3,13 +3,14 @@ from rest_framework import viewsets, status, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
+from django.db.models import Q
 from datetime import datetime, timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Appointment, AppointmentReminder
 from .serializers import (
     AppointmentSerializer, AppointmentCreateSerializer,
     AppointmentUpdateSerializer, AppointmentListSerializer,
-    PatientAppointmentSerializer, DoctorAppointmentSerializer,
+    PatientAppointmentSerializer, ProviderAppointmentSerializer,
     AppointmentReminderSerializer
 )
 
@@ -19,12 +20,12 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     ViewSet for Appointment CRUD operations
     """
     queryset = Appointment.objects.select_related(
-        'patient', 'doctor', 'clinic'
-    ).prefetch_related('doctor__user', 'doctor__specialties')
+        'patient', 'provider', 'clinic'
+    ).prefetch_related('provider__user', 'provider__specialties')
     serializer_class = AppointmentSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['status', 'appointment_type', 'doctor', 'clinic']
+    filterset_fields = ['status', 'appointment_type', 'provider', 'clinic']
     ordering_fields = ['appointment_date', 'appointment_time', 'created_at']
     ordering = ['-appointment_date', '-appointment_time']
     
@@ -34,8 +35,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         
         if user.user_type == 'patient':
             return Appointment.objects.filter(patient=user)
-        elif user.user_type == 'doctor':
-            return Appointment.objects.filter(doctor__user=user)
+        elif user.user_type == 'provider':
+            return Appointment.objects.filter(provider__user=user)
         elif user.is_staff:
             return Appointment.objects.all()
         
@@ -51,8 +52,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             user = self.request.user
             if user.user_type == 'patient':
                 return PatientAppointmentSerializer
-            elif user.user_type == 'doctor':
-                return DoctorAppointmentSerializer
+            elif user.user_type == 'provider':
+                return ProviderAppointmentSerializer
             return AppointmentListSerializer
         return AppointmentSerializer
     
@@ -123,7 +124,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         
         cancellation_reason = request.data.get('reason', '')
         appointment.status = 'cancelled'
-        appointment.doctor_notes = f"Cancelled: {cancellation_reason}"
+        appointment.provider_notes = f"Cancelled: {cancellation_reason}"
         appointment.save()
         
         serializer = self.get_serializer(appointment)
@@ -131,13 +132,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
-        """Mark appointment as completed (doctors only)"""
+        """Mark appointment as completed (providers only)"""
         user = request.user
         appointment = self.get_object()
         
-        if user.user_type != 'doctor' or appointment.doctor.user != user:
+        if user.user_type != 'provider' or appointment.provider.user != user:
             return Response(
-                {'error': 'Only the assigned doctor can complete appointments'},
+                {'error': 'Only the assigned provider can complete appointments'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -148,9 +149,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             )
         
         appointment.status = 'completed'
-        doctor_notes = request.data.get('doctor_notes', '')
-        if doctor_notes:
-            appointment.doctor_notes = doctor_notes
+        provider_notes = request.data.get('provider_notes', '')
+        if provider_notes:
+            appointment.provider_notes = provider_notes
         appointment.save()
         
         serializer = self.get_serializer(appointment)
@@ -186,13 +187,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def available_slots(self, request):
-        """Get available time slots for a doctor"""
-        doctor_id = request.query_params.get('doctor_id')
+        """Get available time slots for a provider"""
+        provider_id = request.query_params.get('provider_id')
         date = request.query_params.get('date')
         
-        if not doctor_id or not date:
+        if not provider_id or not date:
             return Response(
-                {'error': 'doctor_id and date are required'},
+                {'error': 'provider_id and date are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -204,15 +205,15 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get existing appointments for this doctor on this date
+        # Get existing appointments for this provider on this date
         booked_appointments = Appointment.objects.filter(
-            doctor_id=doctor_id,
+            provider_id=provider_id,
             appointment_date=date_obj,
             status__in=['pending', 'confirmed']
         ).values_list('appointment_time', flat=True)
         
         # Generate available slots (example: 9 AM to 5 PM, 30-min slots)
-        # This is simplified - you'd want to check doctor's actual availability
+        # This is simplified - you'd want to check provider's actual availability
         from datetime import time
         available_slots = []
         start_time = time(9, 0)
@@ -232,7 +233,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def statistics(self, request):
-        """Get appointment statistics (for doctors/admins)"""
+        """Get appointment statistics (for providers/admins)"""
         user = request.user
         queryset = self.get_queryset()
         
@@ -268,13 +269,9 @@ class AppointmentReminderViewSet(viewsets.ReadOnlyModelViewSet):
             return AppointmentReminder.objects.filter(
                 appointment__patient=user
             )
-        elif user.user_type == 'doctor':
+        elif user.user_type == 'provider':
             return AppointmentReminder.objects.filter(
-                appointment__doctor__user=user
+                appointment__provider__user=user
             )
         
         return AppointmentReminder.objects.all()
-
-
-# Import Q for complex queries
-from django.db.models import Q

@@ -1,11 +1,11 @@
 # ==================== appointments/models.py ====================
 from django.db import models
 from django.utils import timezone
-from doctors.models import Doctor, Clinic
+from providers.models import Provider, Clinic
 from users.models import User
 
 class Appointment(models.Model):
-    """Patient appointments with doctors"""
+    """Patient appointments with providers"""
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('confirmed', 'Confirmed'),
@@ -15,7 +15,7 @@ class Appointment(models.Model):
     )
     
     patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='appointments')
-    doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name='appointments')
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='appointments')
     clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE, related_name='appointments')
     
     # Appointment details
@@ -43,13 +43,13 @@ class Appointment(models.Model):
     reminder_sent_at = models.DateTimeField(blank=True, null=True)
     
     # Notes
-    doctor_notes = models.TextField(blank=True)
+    provider_notes = models.TextField(blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.patient} with {self.doctor} on {self.appointment_date}"
+        return f"{self.patient} with {self.provider} on {self.appointment_date}"
     
     @property
     def is_upcoming(self):

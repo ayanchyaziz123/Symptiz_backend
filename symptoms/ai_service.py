@@ -323,11 +323,277 @@ Respond in JSON format:
         return conditions_map.get(specialty, ['Requires Medical Evaluation'])
 
 
+class ConversationalSymptomAnalyzer:
+    """
+    Multi-step conversational symptom analyzer
+    Guides user through 3-4 steps of questions to gather comprehensive information
+    """
+
+    def __init__(self):
+        """Initialize conversational analyzer with OpenAI client"""
+        self.use_ai = os.getenv('USE_OPENAI_AI', 'False').lower() == 'true'
+        self.openai_api_key = os.getenv('OPENAI_API_KEY', '')
+
+        if self.use_ai and self.openai_api_key:
+            try:
+                self.client = OpenAI(api_key=self.openai_api_key)
+                print("✓ Conversational AI initialized successfully")
+            except Exception as e:
+                print(f"⚠ OpenAI initialization failed: {e}. Using rule-based.")
+                self.use_ai = False
+                self.client = None
+        else:
+            self.client = None
+
+    def start_conversation(self, initial_complaint: str) -> Dict:
+        """
+        Start symptom conversation and generate first set of questions
+
+        Args:
+            initial_complaint: User's initial symptom description
+
+        Returns:
+            Dictionary with step info and questions
+        """
+        if self.use_ai and self.client:
+            try:
+                return self._generate_questions_ai(initial_complaint, step=1, history=[])
+            except Exception as e:
+                print(f"AI question generation failed: {e}. Using rule-based.")
+
+        # Rule-based fallback
+        return self._generate_questions_rule_based(initial_complaint, step=1)
+
+    def continue_conversation(self, conversation_history: List[Dict], step: int) -> Dict:
+        """
+        Continue conversation with next set of questions
+
+        Args:
+            conversation_history: List of {question, answer} dicts
+            step: Current step number (2 or 3)
+
+        Returns:
+            Dictionary with questions or final analysis
+        """
+        if step >= 4:
+            # Final analysis after 3 steps of questions
+            return self.finalize_analysis(conversation_history)
+
+        if self.use_ai and self.client:
+            try:
+                initial_complaint = conversation_history[0]['answer'] if conversation_history else ""
+                return self._generate_questions_ai(initial_complaint, step, conversation_history)
+            except Exception as e:
+                print(f"AI question generation failed: {e}. Using rule-based.")
+
+        return self._generate_questions_rule_based("", step, conversation_history)
+
+    def finalize_analysis(self, conversation_history: List[Dict]) -> Dict:
+        """
+        Perform final comprehensive analysis based on all conversation data
+
+        Args:
+            conversation_history: Complete conversation history
+
+        Returns:
+            Final analysis with recommendations
+        """
+        # Compile all information
+        full_symptom_description = self._compile_symptom_description(conversation_history)
+
+        # Use the standard analyzer for final analysis
+        final_analysis = symptom_analyzer.analyze_symptoms(full_symptom_description)
+        final_analysis['conversation_summary'] = conversation_history
+        final_analysis['is_final'] = True
+
+        return final_analysis
+
+    def _generate_questions_ai(self, initial_complaint: str, step: int, history: List[Dict] = []) -> Dict:
+        """Generate questions using AI based on step and conversation history"""
+
+        if step == 1:
+            # Step 1: Ask about severity, duration, location
+            prompt = f"""Based on this initial symptom: "{initial_complaint}"
+
+Generate 3 specific follow-up questions to understand:
+1. The severity or intensity (scale 1-10, or description)
+2. How long they've had these symptoms (duration)
+3. Specific location or affected areas
+
+Return JSON format:
+{{
+  "step": 1,
+  "step_title": "Understanding Your Symptoms",
+  "questions": [
+    {{"id": "severity", "question": "...", "type": "text"}},
+    {{"id": "duration", "question": "...", "type": "text"}},
+    {{"id": "location", "question": "...", "type": "text"}}
+  ]
+}}"""
+
+        elif step == 2:
+            # Step 2: Ask about associated symptoms, triggers, patterns
+            history_text = "\n".join([f"Q: {item['question']}\nA: {item['answer']}" for item in history])
+            prompt = f"""Conversation so far:
+{history_text}
+
+Generate 3 follow-up questions to understand:
+1. Any related or associated symptoms
+2. What makes it better or worse (triggers, patterns)
+3. Any recent changes in health, medications, or lifestyle
+
+Return JSON format:
+{{
+  "step": 2,
+  "step_title": "Additional Details",
+  "questions": [
+    {{"id": "related_symptoms", "question": "...", "type": "text"}},
+    {{"id": "triggers", "question": "...", "type": "text"}},
+    {{"id": "recent_changes", "question": "...", "type": "text"}}
+  ]
+}}"""
+
+        else:  # step == 3
+            # Step 3: Ask about medical history, medications, concerns
+            history_text = "\n".join([f"Q: {item['question']}\nA: {item['answer']}" for item in history])
+            prompt = f"""Conversation so far:
+{history_text}
+
+Generate final 3 questions to understand:
+1. Relevant medical history or pre-existing conditions
+2. Current medications or treatments they're taking
+3. Their main concern or what worries them most
+
+Return JSON format:
+{{
+  "step": 3,
+  "step_title": "Medical Background",
+  "questions": [
+    {{"id": "medical_history", "question": "...", "type": "text"}},
+    {{"id": "medications", "question": "...", "type": "text"}},
+    {{"id": "main_concern", "question": "...", "type": "text"}}
+  ]
+}}"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a medical AI assistant. Generate clear, empathetic questions to understand patient symptoms better."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=500,
+                response_format={"type": "json_object"}
+            )
+
+            result = json.loads(response.choices[0].message.content)
+            result['is_final'] = False
+            return result
+
+        except Exception as e:
+            print(f"AI question generation error: {e}")
+            raise
+
+    def _generate_questions_rule_based(self, initial_complaint: str, step: int, history: List[Dict] = []) -> Dict:
+        """Generate questions using rule-based logic (fallback)"""
+
+        if step == 1:
+            return {
+                "step": 1,
+                "step_title": "Understanding Your Symptoms",
+                "is_final": False,
+                "questions": [
+                    {
+                        "id": "severity",
+                        "question": "On a scale of 1-10, how severe is your discomfort? (1 = mild, 10 = severe)",
+                        "type": "text",
+                        "placeholder": "e.g., 7 out of 10"
+                    },
+                    {
+                        "id": "duration",
+                        "question": "How long have you been experiencing these symptoms?",
+                        "type": "text",
+                        "placeholder": "e.g., 3 days, 2 weeks, several months"
+                    },
+                    {
+                        "id": "location",
+                        "question": "Can you describe the specific location or area affected?",
+                        "type": "text",
+                        "placeholder": "e.g., right side of head, lower back, entire chest"
+                    }
+                ]
+            }
+
+        elif step == 2:
+            return {
+                "step": 2,
+                "step_title": "Additional Details",
+                "is_final": False,
+                "questions": [
+                    {
+                        "id": "related_symptoms",
+                        "question": "Are you experiencing any other symptoms along with this? (e.g., fever, nausea, fatigue)",
+                        "type": "text",
+                        "placeholder": "e.g., mild fever, headache, loss of appetite"
+                    },
+                    {
+                        "id": "triggers",
+                        "question": "Does anything make it better or worse? (activities, time of day, food, etc.)",
+                        "type": "text",
+                        "placeholder": "e.g., worse when lying down, better after eating"
+                    },
+                    {
+                        "id": "recent_changes",
+                        "question": "Have there been any recent changes in your health, diet, or medications?",
+                        "type": "text",
+                        "placeholder": "e.g., started new medication, travel, stress"
+                    }
+                ]
+            }
+
+        else:  # step == 3
+            return {
+                "step": 3,
+                "step_title": "Medical Background",
+                "is_final": False,
+                "questions": [
+                    {
+                        "id": "medical_history",
+                        "question": "Do you have any relevant medical conditions or allergies?",
+                        "type": "text",
+                        "placeholder": "e.g., diabetes, high blood pressure, allergies"
+                    },
+                    {
+                        "id": "medications",
+                        "question": "What medications or supplements are you currently taking?",
+                        "type": "text",
+                        "placeholder": "e.g., aspirin, vitamins, prescription drugs"
+                    },
+                    {
+                        "id": "main_concern",
+                        "question": "What concerns you most about these symptoms?",
+                        "type": "text",
+                        "placeholder": "e.g., pain intensity, impact on work, worry about serious illness"
+                    }
+                ]
+            }
+
+    def _compile_symptom_description(self, conversation_history: List[Dict]) -> str:
+        """Compile all conversation data into comprehensive symptom description"""
+        sections = []
+
+        for item in conversation_history:
+            sections.append(f"{item['question']}: {item['answer']}")
+
+        return " | ".join(sections)
+
+
 class DoctorRecommendationAI:
     """
     Service to recommend doctors and specialties based on symptoms
     """
-    
+
     def get_recommended_specialties(self, symptoms: str, urgency_level: str) -> List[str]:
         """
         Get recommended medical specialties based on symptoms
@@ -378,3 +644,4 @@ class DoctorRecommendationAI:
 # Singleton instances
 symptom_analyzer = SymptomAnalyzerAI()
 doctor_recommender = DoctorRecommendationAI()
+conversational_analyzer = ConversationalSymptomAnalyzer()

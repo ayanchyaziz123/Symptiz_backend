@@ -23,6 +23,6 @@ urlpatterns = [
     # API Endpoints
     path('api/users/', include('users.urls')),
     path('api/symptoms/', include('symptoms.urls')),
-    path('api/doctors/', include('doctors.urls')),
+    path('api/providers/', include('providers.urls')),
     path('api/appointments/', include('appointments.urls')),
 ]

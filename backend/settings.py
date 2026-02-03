@@ -2,8 +2,12 @@
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = 'django-insecure-your-secret-key-here-change-in-production'
 
@@ -37,7 +41,7 @@ INSTALLED_APPS = [
     
     # Your apps
     'users',
-    'doctors',
+    'providers',
     'appointments',
     'symptoms',
 ]
@@ -154,15 +158,15 @@ CORS_ALLOW_CREDENTIALS = True
 
 # ===== EMAIL CONFIGURATION =====
 # Console backend - emails will print in terminal (for development)
-#EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-# For Gmail SMTP (uncomment when ready to use)
+# For Gmail SMTP (production)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'aaziz9642@gmail.com'
-EMAIL_HOST_PASSWORD = 'pzywtmhuqfazuvwd'  # Use App Password from Google
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD', '')  # Set this in environment or .env file
 DEFAULT_FROM_EMAIL = 'Healthcare Platform <aaziz9642@gmail.com>'
 
 # ===== SWAGGER/API DOCUMENTATION SETTINGS =====

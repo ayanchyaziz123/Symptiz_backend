@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
-from doctors.models import Specialty, Clinic, Doctor, DoctorClinicAffiliation, DoctorAvailability
+from providers.models import Specialty, Clinic, Doctor, DoctorClinicAffiliation, DoctorAvailability
 from decimal import Decimal
 import random
 

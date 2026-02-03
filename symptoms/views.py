@@ -8,7 +8,7 @@ from .serializers import (
     SymptomCheckCreateSerializer, SymptomCheckListSerializer,
     HealthTipSerializer, HealthTipListSerializer
 )
-from .ai_service import symptom_analyzer, doctor_recommender
+from .ai_service import symptom_analyzer, doctor_recommender, conversational_analyzer
 
 
 class SymptomCategoryViewSet(viewsets.ModelViewSet):
@@ -195,10 +195,106 @@ class SymptomCheckViewSet(viewsets.ModelViewSet):
                 {'error': 'Authentication required'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        
+
         checks = SymptomCheck.objects.filter(patient=request.user).order_by('-created_at')[:10]
         serializer = SymptomCheckListSerializer(checks, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def start_conversation(self, request):
+        """
+        Start multi-step symptom conversation
+
+        POST /api/symptoms/checks/start_conversation/
+        Body: { "initial_symptom": "I have a headache" }
+
+        Returns: { "step": 1, "step_title": "...", "questions": [...] }
+        """
+        initial_symptom = request.data.get('initial_symptom', '')
+
+        if not initial_symptom or len(initial_symptom.strip()) < 5:
+            return Response(
+                {'error': 'Please describe your main symptom (at least 5 characters)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            result = conversational_analyzer.start_conversation(initial_symptom)
+            return Response(result)
+        except Exception as e:
+            import traceback
+            print(f"Conversation start error: {str(e)}")
+            print(traceback.format_exc())
+            return Response(
+                {'error': f'Failed to start conversation: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def continue_conversation(self, request):
+        """
+        Continue multi-step symptom conversation
+
+        POST /api/symptoms/checks/continue_conversation/
+        Body: {
+            "step": 2,
+            "conversation_history": [
+                {"question": "...", "answer": "..."},
+                ...
+            ]
+        }
+
+        Returns: Next questions OR final analysis if step >= 4
+        """
+        step = request.data.get('step', 1)
+        conversation_history = request.data.get('conversation_history', [])
+
+        if not conversation_history:
+            return Response(
+                {'error': 'Conversation history is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            result = conversational_analyzer.continue_conversation(
+                conversation_history,
+                step
+            )
+
+            # If this is final analysis, get recommended specialties
+            if result.get('is_final', False):
+                import json
+                symptoms_text = conversational_analyzer._compile_symptom_description(conversation_history)
+                specialties = doctor_recommender.get_recommended_specialties(
+                    symptoms_text,
+                    result['urgency_level']
+                )
+                result['recommended_specialties'] = specialties
+
+                # Format response for frontend
+                response_data = {
+                    'is_final': True,
+                    'urgency': result['urgency_level'],
+                    'recommendation': result['recommendation'],
+                    'provider_type': result['recommended_provider_type'],
+                    'confidence': float(result['confidence_score']),
+                    'possible_conditions': json.loads(result.get('possible_conditions', '[]')),
+                    'recommended_specialties': specialties,
+                    'follow_up_needed': result['follow_up_needed'],
+                    'conversation_history': conversation_history
+                }
+                return Response(response_data)
+
+            return Response(result)
+
+        except Exception as e:
+            import traceback
+            print(f"Conversation continue error: {str(e)}")
+            print(traceback.format_exc())
+            return Response(
+                {'error': f'Failed to continue conversation: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class HealthTipViewSet(viewsets.ModelViewSet):

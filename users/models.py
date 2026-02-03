@@ -11,7 +11,7 @@ class User(AbstractUser):
     """Custom User model extending Django's AbstractUser"""
     USER_TYPE_CHOICES = (
         ('patient', 'Patient'),
-        ('doctor', 'Doctor'),
+        ('provider', 'Provider'),
         ('admin', 'Admin'),
     )
     

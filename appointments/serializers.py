@@ -2,7 +2,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 from .models import Appointment, AppointmentReminder
-from doctors.serializers import DoctorListSerializer, ClinicListSerializer
+from providers.serializers import ProviderListSerializer, ClinicListSerializer
 from users.serializers import UserProfileSerializer
 
 
@@ -20,7 +20,7 @@ class AppointmentReminderSerializer(serializers.ModelSerializer):
 class AppointmentSerializer(serializers.ModelSerializer):
     """Main serializer for Appointment model"""
     patient_info = UserProfileSerializer(source='patient', read_only=True)
-    doctor_info = DoctorListSerializer(source='doctor', read_only=True)
+    provider_info = ProviderListSerializer(source='provider', read_only=True)
     clinic_info = ClinicListSerializer(source='clinic', read_only=True)
     reminders = AppointmentReminderSerializer(many=True, read_only=True)
     is_upcoming = serializers.BooleanField(read_only=True)
@@ -33,11 +33,11 @@ class AppointmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
         fields = [
-            'id', 'patient', 'patient_info', 'doctor', 'doctor_info',
+            'id', 'patient', 'patient_info', 'provider', 'provider_info',
             'clinic', 'clinic_info', 'appointment_date', 'appointment_time',
             'duration_minutes', 'reason', 'insurance_type', 'status',
             'status_display', 'appointment_type', 'appointment_type_display',
-            'reminder_sent', 'reminder_sent_at', 'doctor_notes',
+            'reminder_sent', 'reminder_sent_at', 'provider_notes',
             'is_upcoming', 'reminders', 'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -63,9 +63,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
         
         return attrs
     
-    def validate_doctor_availability(self, attrs):
-        """Check if doctor is available at the requested time"""
-        # This would require checking DoctorAvailability
+    def validate_provider_availability(self, attrs):
+        """Check if provider is available at the requested time"""
+        # This would require checking ProviderAvailability
         # Implementation depends on your business logic
         return attrs
 
@@ -75,7 +75,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
         fields = [
-            'doctor', 'clinic', 'appointment_date', 'appointment_time',
+            'provider', 'clinic', 'appointment_date', 'appointment_time',
             'duration_minutes', 'reason', 'insurance_type', 'appointment_type'
         ]
     
@@ -118,7 +118,7 @@ class AppointmentUpdateSerializer(serializers.ModelSerializer):
 class AppointmentListSerializer(serializers.ModelSerializer):
     """Simplified serializer for appointment lists"""
     patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
-    doctor_name = serializers.CharField(source='doctor.__str__', read_only=True)
+    provider_name = serializers.CharField(source='provider.__str__', read_only=True)
     clinic_name = serializers.CharField(source='clinic.name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     is_upcoming = serializers.BooleanField(read_only=True)
@@ -126,7 +126,7 @@ class AppointmentListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
         fields = [
-            'id', 'patient_name', 'doctor_name', 'clinic_name',
+            'id', 'patient_name', 'provider_name', 'clinic_name',
             'appointment_date', 'appointment_time', 'status',
             'status_display', 'appointment_type', 'is_upcoming'
         ]
@@ -135,7 +135,7 @@ class AppointmentListSerializer(serializers.ModelSerializer):
 
 class PatientAppointmentSerializer(serializers.ModelSerializer):
     """Serializer for patient's view of their appointments"""
-    doctor_info = DoctorListSerializer(source='doctor', read_only=True)
+    provider_info = ProviderListSerializer(source='provider', read_only=True)
     clinic_info = ClinicListSerializer(source='clinic', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     is_upcoming = serializers.BooleanField(read_only=True)
@@ -143,7 +143,7 @@ class PatientAppointmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
         fields = [
-            'id', 'doctor_info', 'clinic_info', 'appointment_date',
+            'id', 'provider_info', 'clinic_info', 'appointment_date',
             'appointment_time', 'duration_minutes', 'reason',
             'status', 'status_display', 'appointment_type',
             'is_upcoming', 'created_at'
@@ -151,8 +151,8 @@ class PatientAppointmentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
-class DoctorAppointmentSerializer(serializers.ModelSerializer):
-    """Serializer for doctor's view of their appointments"""
+class ProviderAppointmentSerializer(serializers.ModelSerializer):
+    """Serializer for provider's view of their appointments"""
     patient_info = UserProfileSerializer(source='patient', read_only=True)
     clinic_name = serializers.CharField(source='clinic.name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -163,6 +163,6 @@ class DoctorAppointmentSerializer(serializers.ModelSerializer):
             'id', 'patient_info', 'clinic_name', 'appointment_date',
             'appointment_time', 'duration_minutes', 'reason',
             'insurance_type', 'status', 'status_display',
-            'appointment_type', 'doctor_notes', 'created_at'
+            'appointment_type', 'provider_notes', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']

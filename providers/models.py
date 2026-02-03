@@ -56,65 +56,88 @@ class Clinic(models.Model):
         ordering = ['name']
 
 
-class Doctor(models.Model):
-    """Doctor profiles"""
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='doctor_profile')
-    
+class Provider(models.Model):
+    """Healthcare provider profiles"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='provider_profile')
+
     # Professional Info
-    specialties = models.ManyToManyField(Specialty, related_name='doctors')
+    specialties = models.ManyToManyField(Specialty, related_name='providers')
     license_number = models.CharField(max_length=50, unique=True)
+    license_document = models.FileField(upload_to='provider_licenses/', blank=True, null=True,
+                                       help_text="Upload medical license document (PDF, JPG, PNG)")
     years_experience = models.IntegerField(validators=[MinValueValidator(0)])
     bio = models.TextField(blank=True)
-    
+    education = models.TextField(blank=True, help_text="Medical education background")
+    certifications = models.TextField(blank=True, help_text="Board certifications and additional qualifications")
+
     # Languages
     languages = models.CharField(max_length=200, help_text="Comma-separated list")
-    
+
     # Clinic affiliation
-    clinics = models.ManyToManyField(Clinic, related_name='doctors', through='DoctorClinicAffiliation')
-    
+    clinics = models.ManyToManyField(Clinic, related_name='providers', through='ProviderClinicAffiliation')
+
     # Ratings & Reviews
     average_rating = models.DecimalField(
-        max_digits=3, 
-        decimal_places=2, 
+        max_digits=3,
+        decimal_places=2,
         default=0.0,
         validators=[MinValueValidator(0.0), MaxValueValidator(5.0)]
     )
     total_reviews = models.IntegerField(default=0)
-    
+
     # Availability
     accepting_new_patients = models.BooleanField(default=True)
     video_visit_available = models.BooleanField(default=False)
-    
-    # Verification
+
+    # Verification & Admin
+    VERIFICATION_STATUS_CHOICES = (
+        ('pending', 'Pending Verification'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    )
     is_verified = models.BooleanField(default=False)
+    verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS_CHOICES,
+                                          default='pending')
     verified_at = models.DateTimeField(blank=True, null=True)
-    
+    verified_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='verified_providers',
+                                   help_text="Admin who verified this provider")
+    rejection_reason = models.TextField(blank=True, help_text="Reason if rejected")
+
+    # Payment & Stripe
+    stripe_account_id = models.CharField(max_length=100, blank=True, null=True,
+                                         help_text="Stripe Connect account ID for payments")
+    stripe_onboarding_complete = models.BooleanField(default=False)
+    commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=15.00,
+                                          validators=[MinValueValidator(0.0), MaxValueValidator(100.0)],
+                                          help_text="Platform commission percentage (default 15%)")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"Dr. {self.user.get_full_name()}"
+        return f"{self.user.get_full_name()}"
     
     class Meta:
         ordering = ['-average_rating', '-created_at']
 
 
-class DoctorClinicAffiliation(models.Model):
-    """Links doctors to clinics with additional info"""
-    doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE)
+class ProviderClinicAffiliation(models.Model):
+    """Links providers to clinics with additional info"""
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
     clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE)
     is_primary = models.BooleanField(default=False)
     consultation_fee = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
     
     def __str__(self):
-        return f"{self.doctor} at {self.clinic}"
+        return f"{self.provider} at {self.clinic}"
     
     class Meta:
-        unique_together = ('doctor', 'clinic')
+        unique_together = ('provider', 'clinic')
 
 
-class DoctorAvailability(models.Model):
-    """Doctor's weekly schedule"""
+class ProviderAvailability(models.Model):
+    """Provider's weekly schedule"""
     DAYS_OF_WEEK = (
         (0, 'Monday'),
         (1, 'Tuesday'),
@@ -125,7 +148,7 @@ class DoctorAvailability(models.Model):
         (6, 'Sunday'),
     )
     
-    doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name='availability')
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='availability')
     clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE)
     day_of_week = models.IntegerField(choices=DAYS_OF_WEEK)
     start_time = models.TimeField()
@@ -133,15 +156,15 @@ class DoctorAvailability(models.Model):
     is_active = models.BooleanField(default=True)
     
     def __str__(self):
-        return f"{self.doctor} - {self.get_day_of_week_display()}"
+        return f"{self.provider} - {self.get_day_of_week_display()}"
     
     class Meta:
         ordering = ['day_of_week', 'start_time']
 
 
 class Review(models.Model):
-    """Patient reviews for doctors"""
-    doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name='reviews')
+    """Patient reviews for providers"""
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='reviews')
     patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews_given')
     rating = models.IntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(5)]
@@ -154,8 +177,8 @@ class Review(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"Review for {self.doctor} by {self.patient}"
+        return f"Review for {self.provider} by {self.patient}"
     
     class Meta:
         ordering = ['-created_at']
-        unique_together = ('doctor', 'patient')
+        unique_together = ('provider', 'patient')
