@@ -17,7 +17,7 @@ class Specialty(models.Model):
         ordering = ['name']
 
 
-class Clinic(models.Model):
+class Clinic(models.Model): 
     """Healthcare facilities"""
     name = models.CharField(max_length=200)
     address = models.TextField()

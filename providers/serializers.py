@@ -67,7 +67,8 @@ class ProviderAvailabilitySerializer(serializers.ModelSerializer):
     """Serializer for Provider availability schedule"""
     day_name = serializers.CharField(source='get_day_of_week_display', read_only=True)
     clinic_name = serializers.CharField(source='clinic.name', read_only=True)
-    
+    clinic = serializers.PrimaryKeyRelatedField(queryset=Clinic.objects.all(), required=False, allow_null=True)
+
     class Meta:
         model = ProviderAvailability
         fields = [

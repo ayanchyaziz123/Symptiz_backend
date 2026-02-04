@@ -1,5 +1,5 @@
 # ==================== providers/views.py ====================
-from rest_framework import viewsets, filters, status
+from rest_framework import viewsets, filters, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
@@ -300,6 +300,19 @@ class ProviderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def me(self, request):
+        """Get the authenticated user's provider profile"""
+        try:
+            provider = Provider.objects.get(user=request.user)
+            serializer = ProviderSerializer(provider)
+            return Response(serializer.data)
+        except Provider.DoesNotExist:
+            return Response(
+                {'error': 'Provider profile not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
 
 class ProviderClinicAffiliationViewSet(viewsets.ModelViewSet):
     """
@@ -336,6 +349,38 @@ class ProviderAvailabilityViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['provider', 'clinic', 'day_of_week', 'is_active']
     ordering = ['day_of_week', 'start_time']
+
+    def get_queryset(self):
+        """Authenticated providers see only their own availability"""
+        if self.request.user.is_authenticated and hasattr(self.request.user, 'provider_profile'):
+            return self.queryset.filter(provider=self.request.user.provider_profile)
+        return self.queryset
+
+    def perform_create(self, serializer):
+        """Auto-assign provider and clinic from authenticated user"""
+        provider = self.request.user.provider_profile
+        clinic = serializer.validated_data.get('clinic')
+        if not clinic:
+            # Fall back to the provider's primary clinic affiliation
+            affiliation = ProviderClinicAffiliation.objects.filter(
+                provider=provider, is_primary=True
+            ).first()
+            if not affiliation:
+                affiliation = ProviderClinicAffiliation.objects.filter(
+                    provider=provider
+                ).first()
+            if affiliation:
+                clinic = affiliation.clinic
+            else:
+                # No affiliation exists — auto-create one with the first available clinic
+                clinic = Clinic.objects.first()
+                if clinic:
+                    ProviderClinicAffiliation.objects.create(
+                        provider=provider, clinic=clinic, is_primary=True
+                    )
+                else:
+                    raise serializers.ValidationError({'clinic': 'No clinics available in the system.'})
+        serializer.save(provider=provider, clinic=clinic)
 
     @action(detail=False, methods=['get'])
     def by_provider(self, request):
