@@ -491,11 +491,11 @@ class ResetPasswordView(APIView):
 class LogoutView(APIView):
     """
     Logout user
-    
+
     POST /api/users/auth/logout/
     """
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def post(self, request):
         try:
             request.user.auth_token.delete()
@@ -508,5 +508,281 @@ class LogoutView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
-# Include all other views from previous implementation...
-# (UserViewSet, PatientViewSet, check_username, check_email, etc.)
+class ProfilePictureUploadView(APIView):
+    """
+    Upload or update profile picture
+
+    POST /api/users/profile/picture/
+    Content-Type: multipart/form-data
+    Body: profile_picture (file)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if 'profile_picture' not in request.FILES:
+            return Response({
+                'error': 'No profile picture file provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        profile_picture = request.FILES['profile_picture']
+
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if profile_picture.content_type not in allowed_types:
+            return Response({
+                'error': 'Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file size (max 5MB)
+        if profile_picture.size > 5 * 1024 * 1024:
+            return Response({
+                'error': 'File size too large. Maximum size is 5MB.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Delete old profile picture if exists
+        user = request.user
+        if user.profile_picture:
+            user.profile_picture.delete(save=False)
+
+        # Save new profile picture
+        user.profile_picture = profile_picture
+        user.save()
+
+        return Response({
+            'message': 'Profile picture updated successfully',
+            'profile_picture': request.build_absolute_uri(user.profile_picture.url) if user.profile_picture else None
+        }, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        """Delete profile picture"""
+        user = request.user
+        if user.profile_picture:
+            user.profile_picture.delete(save=True)
+            return Response({
+                'message': 'Profile picture deleted successfully'
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'error': 'No profile picture to delete'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class InsuranceDocumentUploadView(APIView):
+    """
+    Upload or update insurance document
+
+    POST /api/users/insurance/document/
+    Content-Type: multipart/form-data
+    Body: insurance_document (file)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get current insurance document info"""
+        user = request.user
+        if user.insurance_document:
+            return Response({
+                'has_document': True,
+                'document_url': request.build_absolute_uri(user.insurance_document.url),
+                'document_name': user.insurance_document.name.split('/')[-1],
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'has_document': False,
+            'document_url': None,
+            'document_name': None,
+        }, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        if 'insurance_document' not in request.FILES:
+            return Response({
+                'error': 'No insurance document file provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        insurance_document = request.FILES['insurance_document']
+
+        # Validate file type
+        allowed_types = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif']
+        if insurance_document.content_type not in allowed_types:
+            return Response({
+                'error': 'Invalid file type. Only PDF, JPEG, PNG, and GIF are allowed.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file size (max 10MB for documents)
+        if insurance_document.size > 10 * 1024 * 1024:
+            return Response({
+                'error': 'File size too large. Maximum size is 10MB.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Delete old insurance document if exists
+        user = request.user
+        if user.insurance_document:
+            user.insurance_document.delete(save=False)
+
+        # Save new insurance document
+        user.insurance_document = insurance_document
+        user.save()
+
+        return Response({
+            'message': 'Insurance document uploaded successfully',
+            'document_url': request.build_absolute_uri(user.insurance_document.url) if user.insurance_document else None,
+            'document_name': user.insurance_document.name.split('/')[-1] if user.insurance_document else None,
+        }, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        """Delete insurance document"""
+        user = request.user
+        if user.insurance_document:
+            user.insurance_document.delete(save=True)
+            return Response({
+                'message': 'Insurance document deleted successfully'
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'error': 'No insurance document to delete'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserProfileView(APIView):
+    """
+    Get and update user profile
+
+    GET /api/users/profile/
+    PUT/PATCH /api/users/profile/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        data = {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'user_type': user.user_type,
+            'phone': user.phone,
+            'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
+            'address': user.address,
+            'city': user.city,
+            'state': user.state,
+            'zip_code': user.zip_code,
+            'profile_picture': request.build_absolute_uri(user.profile_picture.url) if user.profile_picture else None,
+            'insurance_provider': user.insurance_provider,
+            'insurance_id': user.insurance_id,
+            'insurance_document': request.build_absolute_uri(user.insurance_document.url) if user.insurance_document else None,
+            'insurance_document_name': user.insurance_document.name.split('/')[-1] if user.insurance_document else None,
+            'emergency_contact_name': user.emergency_contact_name,
+            'emergency_contact_phone': user.emergency_contact_phone,
+            'email_reminders': user.email_reminders,
+            'sms_reminders': user.sms_reminders,
+            'is_email_verified': user.is_email_verified,
+            'email_verified_at': user.email_verified_at.isoformat() if user.email_verified_at else None,
+            'created_at': user.created_at.isoformat(),
+            'updated_at': user.updated_at.isoformat(),
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        return self._update_profile(request)
+
+    def patch(self, request):
+        return self._update_profile(request)
+
+    def _update_profile(self, request):
+        user = request.user
+        data = request.data
+
+        # Fields that can be updated
+        allowed_fields = [
+            'first_name', 'last_name', 'phone', 'date_of_birth',
+            'address', 'city', 'state', 'zip_code',
+            'insurance_provider', 'insurance_id',
+            'emergency_contact_name', 'emergency_contact_phone',
+            'email_reminders', 'sms_reminders'
+        ]
+
+        for field in allowed_fields:
+            if field in data:
+                value = data[field]
+                # Handle date_of_birth conversion
+                if field == 'date_of_birth' and value:
+                    try:
+                        from datetime import datetime
+                        if isinstance(value, str):
+                            value = datetime.strptime(value, '%Y-%m-%d').date()
+                    except ValueError:
+                        return Response({
+                            'error': 'Invalid date format. Use YYYY-MM-DD'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                # Handle boolean fields
+                elif field in ['email_reminders', 'sms_reminders']:
+                    if isinstance(value, str):
+                        value = value.lower() in ['true', '1', 'yes']
+                setattr(user, field, value)
+
+        user.save()
+
+        return Response({
+            'message': 'Profile updated successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'user_type': user.user_type,
+                'phone': user.phone,
+                'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
+                'address': user.address,
+                'city': user.city,
+                'state': user.state,
+                'zip_code': user.zip_code,
+                'profile_picture': request.build_absolute_uri(user.profile_picture.url) if user.profile_picture else None,
+                'insurance_provider': user.insurance_provider,
+                'insurance_id': user.insurance_id,
+                'emergency_contact_name': user.emergency_contact_name,
+                'emergency_contact_phone': user.emergency_contact_phone,
+                'email_reminders': user.email_reminders,
+                'sms_reminders': user.sms_reminders,
+            }
+        }, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(APIView):
+    """
+    Change user password
+
+    POST /api/users/change-password/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        confirm_password = request.data.get('confirm_password')
+
+        if not current_password or not new_password:
+            return Response({
+                'error': 'Current password and new password are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(current_password):
+            return Response({
+                'error': 'Current password is incorrect'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if new_password != confirm_password:
+            return Response({
+                'error': 'New passwords do not match'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(new_password) < 8:
+            return Response({
+                'error': 'Password must be at least 8 characters long'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+
+        return Response({
+            'message': 'Password changed successfully'
+        }, status=status.HTTP_200_OK)

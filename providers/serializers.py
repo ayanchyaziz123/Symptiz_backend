@@ -159,19 +159,29 @@ class ProviderListSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     specialties = serializers.StringRelatedField(many=True)
     primary_clinic = serializers.SerializerMethodField()
-    
+    profile_picture = serializers.SerializerMethodField()
+
     class Meta:
         model = Provider
         fields = [
             'id', 'full_name', 'specialties', 'years_experience',
             'average_rating', 'total_reviews', 'accepting_new_patients',
-            'video_visit_available', 'primary_clinic'
+            'video_visit_available', 'primary_clinic', 'profile_picture'
         ]
         read_only_fields = ['id']
-    
+
     def get_full_name(self, obj):
         return obj.__str__()
-    
+
+    def get_profile_picture(self, obj):
+        """Get user's profile picture URL"""
+        if obj.user and obj.user.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.user.profile_picture.url)
+            return obj.user.profile_picture.url
+        return None
+
     def get_primary_clinic(self, obj):
         """Get provider's primary clinic"""
         affiliation = obj.providerclinicaffiliation_set.filter(is_primary=True).first()
@@ -184,10 +194,20 @@ class ProviderDetailSerializer(ProviderSerializer):
     """Detailed serializer for single provider view"""
     availability = ProviderAvailabilitySerializer(many=True, read_only=True)
     all_reviews = serializers.SerializerMethodField()
-    
+    profile_picture = serializers.SerializerMethodField()
+
     class Meta(ProviderSerializer.Meta):
-        fields = ProviderSerializer.Meta.fields + ['availability', 'all_reviews']
-    
+        fields = ProviderSerializer.Meta.fields + ['availability', 'all_reviews', 'profile_picture']
+
+    def get_profile_picture(self, obj):
+        """Get user's profile picture URL"""
+        if obj.user and obj.user.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.user.profile_picture.url)
+            return obj.user.profile_picture.url
+        return None
+
     def get_all_reviews(self, obj):
         """Get all reviews with pagination info"""
         reviews = obj.reviews.all()[:10]  # Limit to 10 for detail view

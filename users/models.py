@@ -27,6 +27,7 @@ class User(AbstractUser):
     # Patient-specific fields
     insurance_provider = models.CharField(max_length=100, blank=True, null=True)
     insurance_id = models.CharField(max_length=50, blank=True, null=True)
+    insurance_document = models.FileField(upload_to='insurance_documents/', blank=True, null=True)
     emergency_contact_name = models.CharField(max_length=100, blank=True, null=True)
     emergency_contact_phone = models.CharField(max_length=20, blank=True, null=True)
     

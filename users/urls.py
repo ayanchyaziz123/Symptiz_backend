@@ -10,8 +10,10 @@ from .views import (
     RequestPasswordResetView,
     ResetPasswordView,
     LogoutView,
-    # Include other views from previous implementation
-    # UserViewSet, PatientViewSet, check_username, check_email, etc.
+    ProfilePictureUploadView,
+    InsuranceDocumentUploadView,
+    UserProfileView,
+    ChangePasswordView,
 )
 
 # Create router for viewsets
@@ -37,7 +39,19 @@ urlpatterns = [
     
     # Logout
     path('auth/logout/', LogoutView.as_view(), name='logout'),
-    
+
+    # Profile Picture
+    path('profile/picture/', ProfilePictureUploadView.as_view(), name='profile-picture'),
+
+    # Insurance Document
+    path('insurance/document/', InsuranceDocumentUploadView.as_view(), name='insurance-document'),
+
+    # User Profile
+    path('profile/', UserProfileView.as_view(), name='user-profile'),
+
+    # Change Password
+    path('change-password/', ChangePasswordView.as_view(), name='change-password'),
+
     # Include router URLs
     path('', include(router.urls)),
 ]
